@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>퀴즈 결과 DB 관리</title>
+
+<style>
+body{
+    font-family: Arial,sans-serif;
+    margin:20px;
+}
+
+button{
+    padding:10px;
+    margin:5px;
+    cursor:pointer;
+}
+
+.result{
+    border:1px solid black;
+    border-radius:10px;
+    padding:10px;
+    margin:10px 0;
+}
+
+.searchBox{
+    margin:15px 0;
+    padding:10px;
+    border:1px solid #ccc;
+    border-radius:10px;
+}
+
+.searchBox input{
+    padding:8px;
+    margin:5px;
+}
+</style>
+</head>
+<body>
+
+<h1>퀴즈 결과 DB 관리</h1>
+<h4>by 이태수</h4>
+
+<button onclick="loadResults('quizResults-Quizfile1')">
+Quizfile1 결과 불러오기
+</button>
+
+<button onclick="loadResults('quizResults-Quizfile2')">
+Quizfile2 결과 불러오기
+</button>
+
+<h2 id="currentDB">선택된 DB 없음</h2>
+
+<div class="searchBox">
+
+    <input type="text" id="searchName" placeholder="이름">
+
+    <input type="text" id="searchGrade" placeholder="학년">
+
+    <input type="text" id="searchClass" placeholder="반">
+
+    <input type="text" id="searchScore" placeholder="점수">
+
+    <button onclick="filterResults()">검색</button>
+
+    <button onclick="resetSearch()">초기화</button>
+
+</div>
+
+<div id="results"></div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+
+import {
+    getFirestore,
+    collection,
+    getDocs,
+    deleteDoc,
+    doc
+} from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBocm-YtEjC8rBqqXW-JY-V7NwmZ7T702U",
+    authDomain: "schoolqr-f7931.firebaseapp.com",
+    projectId: "schoolqr-f7931",
+    storageBucket: "schoolqr-f7931.firebasestorage.app",
+    messagingSenderId: "896955124718",
+    appId: "1:896955124718:web:550f14058e2664221fdcff",
+    measurementId: "G-7BQNX7BQKB"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let currentCollection = "";
+let allResults = [];
+
+window.loadResults = async function(dbcname){
+
+    currentCollection = dbcname;
+
+    document.getElementById("currentDB").innerText =
+        "현재 DB : " + dbcname;
+
+    const container =
+        document.getElementById("results");
+
+    container.innerHTML = "불러오는 중...";
+
+    allResults = [];
+
+    try{
+
+        const snapshot =
+            await getDocs(
+                collection(db, dbcname)
+            );
+
+        snapshot.forEach((docSnap)=>{
+
+            allResults.push({
+                id: docSnap.id,
+                ...docSnap.data()
+            });
+
+        });
+
+        renderResults(allResults);
+
+    }catch(e){
+
+        console.error(e);
+
+        container.innerHTML =
+            "불러오기 실패";
+
+    }
+
+}
+
+function renderResults(results){
+
+    const container =
+        document.getElementById("results");
+
+    container.innerHTML = "";
+
+    if(results.length === 0){
+
+        container.innerHTML =
+            "<h3>검색 결과 없음</h3>";
+
+        return;
+
+    }
+
+    results.forEach((data)=>{
+
+        const div =
+            document.createElement("div");
+
+        div.className = "result";
+
+        div.innerHTML = `
+            <b>${data.username ?? "이름없음"}</b>
+            (${data.grade ?? "-"}학년
+            ${data.calss ?? "-"}반)
+
+            <br>
+
+            점수 :
+            ${data.score ?? 0}
+
+            <br>
+
+            제출시간 :
+            ${data.createdAt ?? "-"}
+
+            <br><br>
+
+            <button
+                onclick="deleteResult('${data.id}')">
+                삭제
+            </button>
+        `;
+
+        container.appendChild(div);
+
+    });
+
+}
+
+window.filterResults = function(){
+
+    const name =
+        document.getElementById("searchName")
+        .value
+        .trim()
+        .toLowerCase();
+
+    const grade =
+        document.getElementById("searchGrade")
+        .value
+        .trim();
+
+    const calss =
+        document.getElementById("searchClass")
+        .value
+        .trim();
+
+    const score =
+        document.getElementById("searchScore")
+        .value
+        .trim();
+
+    const filtered =
+        allResults.filter(item=>{
+
+            const nameMatch =
+                !name ||
+                (item.username ?? "")
+                .toLowerCase()
+                .includes(name);
+
+            const gradeMatch =
+                !grade ||
+                String(item.grade ?? "")
+                === grade;
+
+            const classMatch =
+                !calss ||
+                String(item.calss ?? "")
+                === calss;
+
+            const scoreMatch =
+                !score ||
+                String(item.score ?? "")
+                === score;
+
+            return (
+                nameMatch &&
+                gradeMatch &&
+                classMatch &&
+                scoreMatch
+            );
+
+        });
+
+    renderResults(filtered);
+
+}
+
+window.resetSearch = function(){
+
+    document.getElementById("searchName").value = "";
+    document.getElementById("searchGrade").value = "";
+    document.getElementById("searchClass").value = "";
+    document.getElementById("searchScore").value = "";
+
+    renderResults(allResults);
+
+}
+
+window.deleteResult = async function(id){
+
+    if(!currentCollection){
+
+        alert("먼저 DB를 선택하세요.");
+        return;
+
+    }
+
+    if(!confirm("정말 삭제할까요?"))
+        return;
+
+    try{
+
+        await deleteDoc(
+            doc(
+                db,
+                currentCollection,
+                id
+            )
+        );
+
+        allResults =
+            allResults.filter(
+                item => item.id !== id
+            );
+
+        renderResults(allResults);
+
+        alert("삭제 완료");
+
+    }catch(e){
+
+        console.error(e);
+
+        alert("삭제 실패");
+
+    }
+
+}
+
+</script>
+
+</body>
+</html>
